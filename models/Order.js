@@ -42,15 +42,16 @@ const orderSchema = new mongoose.Schema({
     city:    String,
     country: String,
     phone:   String
-  },commission: {
-  type:    Number,
-  default: 0
-},
-vendeurNet: {
-  type:    Number,
-  default: 0
-}
-  
+  },
+  commission: {
+    type:    Number,
+    default: 0
+  },
+  vendeurNet: {
+    type:    Number,
+    default: 0
+  }
+
 }, { timestamps: true })
 
 export default mongoose.model('Order', orderSchema)

@@ -2,9 +2,11 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import User from '../models/User.js'
 
+const JWT_SECRET = process.env.JWT_SECRET || 'agroafrica_secret_dev'
+
 // Générer un token JWT
 const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' })
+  return jwt.sign({ id }, JWT_SECRET, { expiresIn: '30d' })
 }
 
 // INSCRIPTION
