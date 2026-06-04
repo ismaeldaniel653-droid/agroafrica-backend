@@ -1,0 +1,90 @@
+import bcrypt from 'bcryptjs'
+import jwt from 'jsonwebtoken'
+import User from '../models/User.js'
+
+// Générer un token JWT
+const generateToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' })
+}
+
+// INSCRIPTION
+export const register = async (req, res) => {
+  try {
+    const { name, email, phone, password, role } = req.body
+
+    if (!name || !email || !phone || !password) {
+      return res.status(400).json({ message: '❌ Tous les champs obligatoires doivent être remplis' })
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({ message: '❌ Le mot de passe doit contenir au moins 8 caractères' })
+    }
+
+    const userExists = await User.findOne({ email })
+    if (userExists) {
+      return res.status(400).json({ message: '❌ Email déjà utilisé' })
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 12)
+
+    const user = await User.create({
+      name, email, phone,
+      password: hashedPassword,
+      role: role || 'acheteur'
+    })
+
+    res.status(201).json({
+      message: '✅ Compte créé avec succès',
+      token: generateToken(user._id),
+      user: {
+        id:    user._id,
+        name:  user.name,
+        email: user.email,
+        role:  user.role
+      }
+    })
+
+  } catch (error) {
+    res.status(500).json({ message: '❌ Erreur serveur', error: error.message })
+  }
+}
+
+// CONNEXION
+export const login = async (req, res) => {
+  try {
+    const { email, password } = req.body
+
+    if (!email || !password) {
+      return res.status(400).json({ message: '❌ Email et mot de passe sont requis' })
+    }
+
+    const user = await User.findOne({ email })
+    if (!user) {
+      return res.status(400).json({ message: '❌ Email ou mot de passe incorrect' })
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password)
+    if (!isMatch) {
+      return res.status(400).json({ message: '❌ Email ou mot de passe incorrect' })
+    }
+
+    res.json({
+      message: '✅ Connexion réussie',
+      token: generateToken(user._id),
+      user: {
+        id:    user._id,
+        name:  user.name,
+        email: user.email,
+        role:  user.role
+      }
+    })
+
+  } catch (error) {
+    res.status(500).json({ message: '❌ Erreur serveur', error: error.message })
+  }
+}
+
+// PROFIL
+export const getProfile = async (req, res) => {
+  res.json({ user: req.user })
+}
