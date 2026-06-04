@@ -15,20 +15,25 @@ dotenv.config()
 
 const app = express()
 const PORT = process.env.PORT || 5000
-const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173'
+const CLIENT_URL = process.env.CLIENT_URL || (process.env.NODE_ENV !== 'production' ? 'http://localhost:5173' : '*')
+const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV !== 'production' ? 'agroafrica_secret_dev' : undefined)
 
 if (!process.env.MONGO_URI) {
   console.warn('⚠️  MONGO_URI absent — utilisation possible d\'un fallback en mémoire (dev)')
 }
 
-if (!process.env.JWT_SECRET) {
+if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
   console.error('❌ La variable JWT_SECRET est manquante dans .env')
   process.exit(1)
 }
 
+if (!process.env.CLIENT_URL) {
+  console.warn('⚠️  CLIENT_URL absent — CORS autorisé pour toutes origines. Configurez CLIENT_URL en production.')
+}
+
 // MIDDLEWARES
 app.use(cors({
-  origin: CLIENT_URL,
+  origin: CLIENT_URL === '*' ? true : CLIENT_URL,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
