@@ -9,6 +9,7 @@ import productRoutes from './routes/productRoutes.js'
 import orderRoutes   from './routes/orderRoutes.js'
 import paymentRoutes from './routes/paymentRoutes.js'
 import qrRoutes      from './routes/qrRoutes.js'
+import aiRoutes      from './routes/aiRoutes.js'
 
 // Load environment variables
 dotenv.config()
@@ -47,6 +48,8 @@ app.use('/api/products', productRoutes)
 app.use('/api/orders',   orderRoutes)
 app.use('/api/payment',  paymentRoutes)
 app.use('/api/qr',       qrRoutes)
+app.use('/api/ai',       aiRoutes)
+
 
 // TEST ENDPOINT
 app.get('/', (req, res) => {
