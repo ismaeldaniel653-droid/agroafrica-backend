@@ -1,5 +1,8 @@
 # TODO - AgroAfrica (Amazon 5 couches + Redis + Docker + IA)
 
+## PR trigger
+- PR générée/à générer (commit “trigger”).
+
 ## Étape 1 — Back end : état & architecture
 - [ ] Revoir routes/controllers/services actuels
 - [ ] Définir le mapping “modules” (Catalogue, Auth, Paiement, QR, IA, Commandes)
