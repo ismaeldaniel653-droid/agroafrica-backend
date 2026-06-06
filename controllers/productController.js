@@ -1,21 +1,41 @@
 import Product from '../models/Product.js'
+import { getCachedProducts, setCachedProducts } from '../services/productCacheService.js'
 
 // GET tous les produits
 export const getProducts = async (req, res) => {
   try {
     const { category, search } = req.query
-    let filter = {}
 
+    // Cache Redis (si dispo)
+    const cached = await getCachedProducts({ category, search })
+    if (cached) return res.json({ products: cached, cached: true })
+
+    let filter = {}
     if (category) filter.category = category
     if (search)   filter.name = { $regex: search, $options: 'i' }
 
     const products = await Product.find(filter).populate('seller', 'name')
-    res.json({ products })
+
+    await setCachedProducts({ category, search, payload: products })
+
+    res.json({ products, cached: false })
 
   } catch (error) {
-    res.status(500).json({ message: '❌ Erreur serveur' })
+    // En cas de problème Redis, fallback direct DB
+    try {
+      const { category, search } = req.query
+      let filter = {}
+      if (category) filter.category = category
+      if (search)   filter.name = { $regex: search, $options: 'i' }
+
+      const products = await Product.find(filter).populate('seller', 'name')
+      return res.json({ products, cached: false })
+    } catch {
+      res.status(500).json({ message: '❌ Erreur serveur' })
+    }
   }
 }
+
 
 // GET un produit
 export const getProduct = async (req, res) => {
