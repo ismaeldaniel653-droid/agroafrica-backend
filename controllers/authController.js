@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import User from '../models/User.js'
+import { sendWelcomeEmail } from '../services/emailService.js'
 
 const JWT_SECRET = process.env.JWT_SECRET || 'agroafrica_secret_dev'
 
@@ -34,6 +35,9 @@ export const register = async (req, res) => {
       password: hashedPassword,
       role: role || 'acheteur'
     })
+
+    // Envoyer email de bienvenue (non bloquant)
+    sendWelcomeEmail({ to: email, name, role: role || 'acheteur' }).catch(() => {})
 
     res.status(201).json({
       message: '✅ Compte créé avec succès',
@@ -89,4 +93,57 @@ export const login = async (req, res) => {
 // PROFIL
 export const getProfile = async (req, res) => {
   res.json({ user: req.user })
+}
+
+// MODIFIER PROFIL
+export const updateProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id)
+    if (!user) return res.status(404).json({ message: '❌ Utilisateur introuvable' })
+
+    const { name, email, phone, country } = req.body
+
+    if (name) user.name = name
+    if (email) user.email = email
+    if (phone) user.phone = phone
+    if (country) user.country = country
+
+    await user.save()
+
+    res.json({
+      message: '✅ Profil mis à jour',
+      user: { ...user.toObject(), password: undefined }
+    })
+  } catch (error) {
+    res.status(500).json({ message: '❌ Erreur serveur', error: error.message })
+  }
+}
+
+// CHANGER MOT DE PASSE
+export const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: '❌ Mot de passe actuel et nouveau mot de passe requis' })
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({ message: '❌ Le nouveau mot de passe doit contenir au moins 8 caractères' })
+    }
+
+    const user = await User.findById(req.user._id)
+    const isMatch = await bcrypt.compare(currentPassword, user.password)
+
+    if (!isMatch) {
+      return res.status(400).json({ message: '❌ Mot de passe actuel incorrect' })
+    }
+
+    user.password = await bcrypt.hash(newPassword, 12)
+    await user.save()
+
+    res.json({ message: '✅ Mot de passe mis à jour' })
+  } catch (error) {
+    res.status(500).json({ message: '❌ Erreur serveur', error: error.message })
+  }
 }
