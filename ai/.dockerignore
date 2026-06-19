@@ -1,0 +1,23 @@
+# Fichiers jamais nécessaires dans l'image
+.git
+.gitignore
+.env
+.env.*
+*.md
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.coverage
+.mypy_cache
+.ruff_cache
+docker-compose*.yml
+Dockerfile.dev
+tests/
+docs/
+venv/
+.venv/
+.vscode/
+.idea/
+*.log

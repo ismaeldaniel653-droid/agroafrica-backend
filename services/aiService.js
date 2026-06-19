@@ -1,20 +1,30 @@
 import fetch from 'node-fetch'
 
-// Appel service IA Python
 export const callAiPredict = async ({ input }) => {
-  const aiUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000'
-  const res = await fetch(`${aiUrl}/predict`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ input })
-  })
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 30_000)   // ✅ timeout 30s
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`AI service error (${res.status}): ${text || res.statusText}`)
+  try {
+    const res = await fetch(`${process.env.AI_SERVICE_URL}/predict`, {
+      method:  'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key':    process.env.AI_SERVICE_KEY
+      },
+      body: JSON.stringify(input),
+      signal: ctrl.signal
+    })
+    clearTimeout(timer)
+
+    if (!res.ok) {
+      const err = await res.text()
+      throw new Error(`AI service ${res.status}: ${err}`)
+    }
+    return await res.json()
+  } catch (e) {
+    clearTimeout(timer)
+    if (e.name === 'AbortError') throw new Error('AI_TIMEOUT')
+    throw e
   }
-
-  const data = await res.json()
-  return data
 }
 

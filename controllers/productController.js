@@ -1,95 +1,81 @@
 import Product from '../models/Product.js'
 import { getCachedProducts, setCachedProducts } from '../services/productCacheService.js'
 
-// GET tous les produits — Recherche avancée + Pagination + Tri
+// ✅ CORRECTION 7.2 — Cache key bornée (catégorie simple uniquement)
+const CACHEABLE = new Set(['all', 'agricole', 'artisanal'])
+
 export const getProducts = async (req, res) => {
   try {
     const {
-      category, search, origin, badge,
+      category, search, origin, badge, isActive = 'true',
       minPrice, maxPrice,
       sort = 'createdAt', order = 'desc',
       page = 1, limit = 20
     } = req.query
 
-    // Cache Redis (si dispo)
-    const cached = await getCachedProducts({ category, search })
-    if (cached && !origin && !minPrice && !maxPrice) return res.json({ products: cached, cached: true })
+    const pageNum = Math.max(1, Number(page))
+    const lim     = Math.min(50, Math.max(1, Number(limit)))
+    const skip    = (pageNum - 1) * lim
 
-    // Construction du filtre
-    let filter = {}
+    // Cache : uniquement catégorie pure sans filtre additionnel
+    const cacheKey = CACHEABLE.has(category) && !search && !origin && !badge && !minPrice && !maxPrice
+      ? `p:${category}:${sort}:${order}:${pageNum}:${lim}`
+      : null
 
-    if (category) filter.category = category
-    if (badge) filter.badge = badge
-    if (origin) filter.origin = { $regex: origin, $options: 'i' }
-
-    // Recherche textuelle améliorée (nom + description + origine)
-    if (search) {
-      filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { origin: { $regex: search, $options: 'i' } }
-      ]
+    if (cacheKey) {
+      const cached = await getCachedProducts(cacheKey)
+      if (cached) return res.json({ ...cached, cached: true })
     }
 
-    // Filtre par prix
+    const filter = { isActive: isActive === 'true' }
+    if (category) filter.category = category
+    if (badge)    filter.badge    = badge
+
+    // ✅ CORRECTION 7.3 — Sanitization regex (escape Meta characters)
+    const escapeRx = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    if (origin) filter.origin = { $regex: escapeRx(origin), $options: 'i' }
+    if (search) {
+      const rx = new RegExp(escapeRx(search), 'i')
+      filter.$or = [
+        { name:        rx },
+        { description: rx },
+        { origin:      rx }
+      ]
+    }
     if (minPrice || maxPrice) {
       filter.price = {}
       if (minPrice) filter.price.$gte = Number(minPrice)
       if (maxPrice) filter.price.$lte = Number(maxPrice)
     }
 
-    // Tri
-    const sortOptions = {}
-    if (sort === 'price') sortOptions.price = order === 'asc' ? 1 : -1
-    else if (sort === 'rating') sortOptions.rating = order === 'asc' ? 1 : -1
-    else if (sort === 'name') sortOptions.name = order === 'asc' ? 1 : -1
-    else if (sort === 'popular') sortOptions.reviews = -1
-    else sortOptions.createdAt = order === 'asc' ? 1 : -1
-
-    // Pagination
-    const skip = (Number(page) - 1) * Number(limit)
+    // Tri whitelisté
+    const SORT_WHITELIST = { createdAt: 1, price: 1, rating: 1, name: 1, salesCount: 1 }
+    const sortField = SORT_WHITELIST[sort] ? sort : 'createdAt'
+    const sortOrder = order === 'asc' ? 1 : -1
 
     const [products, total] = await Promise.all([
       Product.find(filter)
-        .populate('seller', 'name country')
-        .sort(sortOptions)
-        .skip(skip)
-        .limit(Number(limit)),
+        .populate('seller', 'name country isVerified')
+        .sort({ [sortField]: sortOrder })
+        .skip(skip).limit(lim)
+        .lean(),
       Product.countDocuments(filter)
     ])
 
-    await setCachedProducts({ category, search, payload: products })
-
-    res.json({
-      products,
-      pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        pages: Math.ceil(total / Number(limit))
-      },
-      cached: false
-    })
-
+    const response = { products, total, page: pageNum, pages: Math.ceil(total / lim) }
+    if (cacheKey) await setCachedProducts(cacheKey, response, 120)  // 2 min
+    res.json(response)
   } catch (error) {
-    // Fallback sans cache
-    try {
-      const { category, search } = req.query
-      let filter = {}
-      if (category) filter.category = category
-      if (search) filter.name = { $regex: search, $options: 'i' }
-      const products = await Product.find(filter).populate('seller', 'name')
-      return res.json({ products, cached: false })
-    } catch {
-      res.status(500).json({ message: '❌ Erreur serveur' })
-    }
+    console.error('getProducts:', error)
+    res.status(500).json({ message: '❌ Erreur serveur' })
   }
 }
 
-// GET un produit
 export const getProduct = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id).populate('seller', 'name country')
+    const product = await Product.findById(req.params.id)
+      .populate('seller', 'name country email isVerified phone')
+      .lean()
     if (!product) return res.status(404).json({ message: '❌ Produit introuvable' })
     res.json({ product })
   } catch (error) {
@@ -97,105 +83,116 @@ export const getProduct = async (req, res) => {
   }
 }
 
-// CRÉER un produit (avec upload photos)
+// ✅ CORRECTION 7.6 — Garde rôle vendeur
 export const createProduct = async (req, res) => {
   try {
-    const { name, description, price, category, origin } = req.body
-
-    if (!name || !description || !price || !category || !origin) {
-      return res.status(400).json({ message: '❌ Champs obligatoires manquants' })
+    if (!['vendeur', 'admin'].includes(req.user.role)) {
+      return res.status(403).json({ message: '❌ Seuls les vendeurs peuvent créer un produit' })
     }
 
-    // Gérer les images uploadées (Multer)
-    let images = []
-    if (req.files && req.files.length > 0) {
-      // En prod : upload vers Cloudinary/CDN, ici on stocke en base64
-      images = req.files.map(file => ({
-        data: file.buffer.toString('base64'),
-        contentType: file.mimetype,
-        name: file.originalname
-      }))
+    const required = ['name', 'category', 'price', 'stock', 'origin']
+    for (const f of required) {
+      if (req.body[f] === undefined) {
+        return res.status(400).json({ message: `❌ Champ requis : ${f}` })
+      }
     }
+    if (req.body.price < 0 || req.body.stock < 0) {
+      return res.status(400).json({ message: '❌ Prix/stock doivent être positifs' })
+    }
+
+    // ✅ CORRECTION 7.1 — Images = URLs (Cloudinary), jamais base64
+    const images = Array.isArray(req.body.images)
+      ? req.body.images.filter(img => typeof img === 'string' && /^https?:\/\//.test(img))
+      : []
 
     const product = await Product.create({
       ...req.body,
-      images: images.length > 0 ? images : [],
-      seller: req.user._id
+      seller: req.user._id,
+      images,
+      isActive: req.body.isActive ?? true
     })
-
-    res.status(201).json({
-      message: '✅ Produit créé',
-      product
-    })
+    res.status(201).json({ message: '✅ Produit créé', product })
   } catch (error) {
-    res.status(500).json({ message: '❌ Erreur serveur', error: error.message })
+    console.error('createProduct:', error)
+    res.status(500).json({ message: '❌ Erreur serveur' })
   }
 }
 
-// MODIFIER un produit (avec upload photos)
 export const updateProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id)
     if (!product) return res.status(404).json({ message: '❌ Produit introuvable' })
 
     if (product.seller.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({ message: '❌ Vous n\'êtes pas autorisé à modifier ce produit' })
+      return res.status(403).json({ message: '❌ Non autorisé' })
     }
 
-    // Ajouter nouvelles images si upload
-    if (req.files && req.files.length > 0) {
-      const newImages = req.files.map(file => ({
-        data: file.buffer.toString('base64'),
-        contentType: file.mimetype,
-        name: file.originalname
-      }))
-      product.images = [...(product.images || []), ...newImages]
+    const allowed = ['name', 'description', 'category', 'price', 'stock', 'origin', 'badge', 'emoji', 'isActive']
+    for (const k of allowed) {
+      if (req.body[k] !== undefined) product[k] = req.body[k]
     }
 
-    Object.assign(product, req.body)
+    // ✅ CORRECTION 7.7 — Remplacement complet des images (URLs)
+    if (Array.isArray(req.body.images)) {
+      const validImages = req.body.images.filter(img =>
+        typeof img === 'string' && /^https?:\/\//.test(img)
+      )
+      product.images = validImages
+    }
+
     await product.save()
-
-    res.json({ message: '✅ Produit modifié', product })
+    res.json({ message: '✅ Produit mis à jour', product })
   } catch (error) {
-    res.status(500).json({ message: '❌ Erreur serveur', error: error.message })
+    console.error('updateProduct:', error)
+    res.status(500).json({ message: '❌ Erreur serveur' })
   }
 }
 
-// SUPPRIMER un produit
 export const deleteProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id)
     if (!product) return res.status(404).json({ message: '❌ Produit introuvable' })
-
     if (product.seller.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({ message: '❌ Vous n\'êtes pas autorisé à supprimer ce produit' })
+      return res.status(403).json({ message: '❌ Non autorisé' })
     }
 
-    await Product.findByIdAndDelete(req.params.id)
-    res.json({ message: '✅ Produit supprimé' })
+    // ✅ Soft delete (préserve historique commandes)
+    product.isActive = false
+    product.deletedAt = new Date()
+    await product.save()
+
+    res.json({ message: '✅ Produit désactivé (historique préservé)' })
   } catch (error) {
-    res.status(500).json({ message: '❌ Erreur serveur', error: error.message })
+    console.error('deleteProduct:', error)
+    res.status(500).json({ message: '❌ Erreur serveur' })
   }
 }
 
-// STATISTIQUES PRODUITS (pour dashboard admin)
 export const getProductStats = async (req, res) => {
   try {
-    const [totalProducts, byCategory, avgPrice, topRated] = await Promise.all([
-      Product.countDocuments(),
+    const [total, byCategory, priceAgg, topRated] = await Promise.all([
+      Product.countDocuments({ isActive: true }),
       Product.aggregate([
-        { $group: { _id: '$category', count: { $sum: 1 }, totalStock: { $sum: '$stock' } } }
+        { $match: { isActive: true } },
+        { $group: { _id: '$category', count: { $sum: 1 } } }
       ]),
       Product.aggregate([
-        { $group: { _id: null, avgPrice: { $avg: '$price' }, minPrice: { $min: '$price' }, maxPrice: { $max: '$price' } } }
+        { $match: { isActive: true } },
+        { $group: {
+          _id: null,
+          avgPrice: { $avg: '$price' },
+          minPrice: { $min: '$price' },
+          maxPrice: { $max: '$price' }
+        }}
       ]),
-      Product.find().sort({ rating: -1, reviews: -1 }).limit(5).select('name emoji rating reviews price')
+      Product.find({ isActive: true })
+        .sort({ rating: -1 }).limit(5)
+        .select('name emoji rating salesCount price').lean()
     ])
-
     res.json({
-      totalProducts,
+      total,
       byCategory,
-      priceStats: avgPrice[0] || { avgPrice: 0, minPrice: 0, maxPrice: 0 },
+      priceStats: priceAgg[0] || { avgPrice: 0, minPrice: 0, maxPrice: 0 },
       topRated
     })
   } catch (error) {

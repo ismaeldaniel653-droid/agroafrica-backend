@@ -1,18 +1,20 @@
 services:
   - type: web
-    name: agroafrica-backend
-    runtime: node
-    plan: free
-    buildCommand: npm install
-    startCommand: npm start
+    name: agroafrica-ai
+    runtime: docker
+    rootDir: agroafrica-ai-service
+    dockerfilePath: ./Dockerfile
+    dockerContext: ./agroafrica-ai-service
+    plan: starter
+    region: frankfurt
     envVars:
-      - key: NODE_ENV
-        value: production
-      - key: MONGO_URI
-        sync: false
-      - key: JWT_SECRET
-        generateValue: true
-      - key: CLIENT_URL
-        value: https://agroafrica.vercel.app
-      - key: PORT
-        value: 5000
+      - key: API_KEY
+        sync: false                          # valeur définie dans le dashboard Render
+      - key: ALLOWED_ORIGINS
+        value: https://agroafrica-frontend.vercel.app
+      - key: USE_ML_MODEL
+        value: "false"
+      - key: LOG_LEVEL
+        value: INFO
+    healthCheckPath: /health
+    autoDeploy: true
