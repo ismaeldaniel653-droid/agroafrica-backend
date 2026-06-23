@@ -87,3 +87,23 @@ export const closeRedis = async () => {
   client = null
 }
 
+// Dans redisClient.js, ajouter :
+export const cacheDelByPattern = async (pattern) => {
+  try {
+    const c = await getRedisClient()
+    if (!c) return 0
+    let cursor = 0, removed = 0
+    do {
+      const reply = await c.scan(cursor, { MATCH: pattern, COUNT: 100 })
+      cursor = reply.cursor
+      if (reply.keys.length) {
+        await c.del(reply.keys)
+        removed += reply.keys.length
+      }
+    } while (cursor !== 0)
+    return removed
+  } catch {
+    // Fallback : ignore silencieusement
+    return 0
+  }
+}

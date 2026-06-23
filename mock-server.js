@@ -12,6 +12,86 @@ const PRODUCTS = [
 
 let ORDERS = []
 
+// ✅ MOCK AUTH
+const USERS = [
+  { _id:'u1', name:'Jean Test', email:'jean@test.com', phone:'+237677123456', role:'acheteur', avatar:null }
+]
+let TOKENS = {}
+
+// Register
+app.post('/api/auth/register', (req, res) => {
+  const { name, phone, email, password, role } = req.body
+  if (!name || !phone || !password) {
+    return res.status(400).json({ message: 'Nom, téléphone et mot de passe requis' })
+  }
+  const exists = USERS.find(u => u.phone === phone || (email && u.email === email))
+  if (exists) return res.status(400).json({ message: 'Cet utilisateur existe déjà' })
+  
+  const user = { _id: `u${Date.now()}`, name, phone, email: email || '', role: role || 'acheteur', avatar: null }
+  USERS.push(user)
+  const token = `mock-token-${user._id}`
+  TOKENS[token] = user
+  res.status(201).json({ token, user: { ...user, password: undefined } })
+})
+
+// Login
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body
+  if (!email || !password) return res.status(400).json({ message: 'Identifiant et mot de passe requis' })
+  
+  // Cherche par email ou téléphone
+  const user = USERS.find(u => u.email === email || u.phone === email)
+  if (!user) return res.status(401).json({ message: 'Identifiants incorrects' })
+  
+  // En mock, on accepte tous les mots de passe de 8+ caractères
+  if (password.length < 8) return res.status(401).json({ message: 'Mot de passe incorrect' })
+  
+  const token = `mock-token-${user._id}`
+  TOKENS[token] = user
+  res.json({ token, user: { ...user, password: undefined } })
+})
+
+// Profile
+app.get('/api/auth/profile', (req, res) => {
+  const auth = req.headers.authorization
+  if (!auth || !auth.startsWith('Bearer ')) return res.status(401).json({ message: 'Non authentifié' })
+  const token = auth.split(' ')[1]
+  const user = TOKENS[token]
+  if (!user) return res.status(401).json({ message: 'Token invalide' })
+  res.json({ ...user, password: undefined })
+})
+
+// Update profile
+app.put('/api/auth/profile', (req, res) => {
+  const auth = req.headers.authorization
+  if (!auth || !auth.startsWith('Bearer ')) return res.status(401).json({ message: 'Non authentifié' })
+  const token = auth.split(' ')[1]
+  const user = TOKENS[token]
+  if (!user) return res.status(401).json({ message: 'Token invalide' })
+  
+  Object.assign(user, req.body)
+  res.json({ ...user, password: undefined })
+})
+
+// Logout
+app.post('/api/auth/logout', (req, res) => {
+  const auth = req.headers.authorization
+  if (!auth || !auth.startsWith('Bearer ')) return res.status(401).json({ message: 'Non authentifié' })
+  const token = auth.split(' ')[1]
+  delete TOKENS[token]
+  res.json({ message: 'Déconnecté' })
+})
+
+// Refresh token
+app.post('/api/auth/refresh', (req, res) => {
+  const auth = req.headers.authorization
+  if (!auth || !auth.startsWith('Bearer ')) return res.status(401).json({ message: 'Non authentifié' })
+  const token = auth.split(' ')[1]
+  const user = TOKENS[token]
+  if (!user) return res.status(401).json({ message: 'Token invalide' })
+  res.json({ token, user: { ...user, password: undefined } })
+})
+
 app.get('/api/products', (req, res) => {
   res.json({ products: PRODUCTS })
 })

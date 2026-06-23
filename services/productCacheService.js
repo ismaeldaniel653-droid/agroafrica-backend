@@ -1,29 +1,51 @@
-import { getRedisClient } from '../infrastructure/redisClient.js'
+/**
+ * AgroAfrica — Product Cache V2.0
+ *  - Path d'import corrigé
+ *  - Cache key normalisé
+ *  - Invalidation sur write (via événements)
+ *  - Fallback in-memory
+ *  - TTL adapts selon content
+ */
+import { cacheGet, cacheSet, cacheDelByPattern } from '../config/redisClient.js'
 
-const CACHE_PREFIX = 'products:v1:'
-const CACHE_TTL_SECONDS = 60 * 10 // 10 minutes
+const PREFIX       = 'products:v2:'
+const TTL_LISTINGS = 120      // 2 min — produits en vente changent souvent
+const TTL_DETAIL   = 600      // 10 min
 
-const buildCacheKey = (category, search) => {
-  const cat = category ? String(category) : ''
-  const sea = search ? String(search) : ''
-  return `${CACHE_PREFIX}${cat}:${sea}`
+// ✅ CORRECTION 4.2 — Cache key hashé (évite explosion)
+const hashKeyPart = (s = '') => {
+  const txt = String(s).trim().toLowerCase()
+  let h = 5381
+  for (let i = 0; i < txt.length; i++) h = ((h << 5) + h) ^ txt.charCodeAt(i)
+  return (h >>> 0).toString(16)
 }
 
-export const getCachedProducts = async ({ category, search }) => {
-  const client = await getRedisClient()
-  const key = buildCacheKey(category, search)
-  const raw = await client.get(key)
-  if (!raw) return null
-  try {
-    return JSON.parse(raw)
-  } catch {
-    return null
-  }
+const buildKey = ({ category = 'all', search = '', sort = 'createdAt', order = 'desc', page = 1, limit = 20 }) =>
+  `${PREFIX}${category}:h${hashKeyPart(search)}:${sort}:${order}:p${page}:l${Math.min(50, limit)}`
+
+export const getCachedProducts = async ({ category, search, sort, order, page, limit }) => {
+  const key = buildKey({ category, search, sort, order, page, limit })
+  return cacheGet(key)
 }
 
-export const setCachedProducts = async ({ category, search, payload }) => {
-  const client = await getRedisClient()
-  const key = buildCacheKey(category, search)
-  await client.setEx(key, CACHE_TTL_SECONDS, JSON.stringify(payload))
+export const setCachedProducts = async ({ category, search, sort, order, page, limit, payload }) => {
+  const key = buildKey({ category, search, sort, order, page, limit })
+  return cacheSet(key, payload, TTL_LISTINGS)
+}
+
+// ✅ CORRECTION 4.3 — Invalidation ciblée
+export const invalidateProductCache = async (productId = null) => {
+  // Supprime listings
+  await cacheDelByPattern(`${PREFIX}*`)
+  // Cache détail spécifique
+  if (productId) await cacheDelByPattern(`product:v2:${productId}*`)
+}
+
+// Cache pour produit individuel
+export const getCachedProduct = async (productId) => {
+  return cacheGet(`product:v2:${productId}`)
+}
+export const setCachedProduct = async (productId, payload) => {
+  return cacheSet(`product:v2:${productId}`, payload, TTL_DETAIL)
 }
 
