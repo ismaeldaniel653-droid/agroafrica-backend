@@ -1,15 +1,41 @@
 services:
+  # ─── API Backend Node.js (Express) ───
+  - type: web
+    name: agroafrica-backend
+    runtime: node
+    repo: https://github.com/ismaeldaniel653-droid/agroafrica-backend
+    plan: free
+    region: frankfurt
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "5000"
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CLIENT_URL
+        value: https://agroafrica-frontend.vercel.app
+      - key: REDIS_URL
+        sync: false
+
+  # ─── Service IA (Docker) ───
   - type: web
     name: agroafrica-ai
     runtime: docker
-    rootDir: agroafrica-ai-service
+    rootDir: ai
     dockerfilePath: ./Dockerfile
-    dockerContext: ./agroafrica-ai-service
-    plan: starter
+    dockerContext: ./ai
+    plan: free
     region: frankfurt
     envVars:
       - key: API_KEY
-        sync: false                          # valeur définie dans le dashboard Render
+        sync: false
       - key: ALLOWED_ORIGINS
         value: https://agroafrica-frontend.vercel.app
       - key: USE_ML_MODEL
