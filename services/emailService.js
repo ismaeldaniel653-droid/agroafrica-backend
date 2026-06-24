@@ -12,7 +12,7 @@ const require = createRequire(import.meta.url)
 
 let transporter = null
 let provider = null   // 'smtp' | 'resend' | 'sendgrid' | 'log'
-import { cacheSet } from '../config/redisClient.js'
+import { cacheSet } from '../infrastructure/redisClient.js'
 
 const envBool = (v, d = false) => v === undefined ? d : v === 'true' || v === '1'
 
