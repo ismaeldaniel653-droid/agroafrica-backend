@@ -16,7 +16,7 @@ import {
   getStatsByCountry, getSalesByMonth, getTopSellers
 } from '../controllers/adminController.js'
 import { protect, adminOnly } from '../middleware/authMiddleware.js'
-import { cacheDel } from '../config/redisClient.js'
+import { cacheDel } from '../infrastructure/redisClient.js'
 
 const router = express.Router()
 
