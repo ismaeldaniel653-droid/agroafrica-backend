@@ -184,3 +184,26 @@ export const changePassword = async (req, res) => {
     res.status(500).json({ message: '❌ Erreur serveur' })
   }
 }
+
+// ✅ Logout — déconnexion (le client supprime le token)
+export const logout = async (req, res) => {
+  try {
+    res.json({ message: '✅ Déconnexion réussie' })
+  } catch (error) {
+    console.error('logout:', error)
+    res.status(500).json({ message: '❌ Erreur serveur' })
+  }
+}
+
+// ✅ Refresh token — renouvelle le JWT si le token actuel est valide
+export const refreshToken = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('-password')
+    if (!user) return res.status(404).json({ message: '❌ Utilisateur introuvable' })
+    const token = generateToken(user._id, user.role)
+    res.json({ token, user })
+  } catch (error) {
+    console.error('refreshToken:', error)
+    res.status(500).json({ message: '❌ Erreur serveur' })
+  }
+}
