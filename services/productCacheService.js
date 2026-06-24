@@ -6,7 +6,7 @@
  *  - Fallback in-memory
  *  - TTL adapts selon content
  */
-import { cacheGet, cacheSet, cacheDelByPattern } from '../config/redisClient.js'
+import { cacheGet, cacheSet, cacheDelByPattern } from '../infrastructure/redisClient.js'
 
 const PREFIX       = 'products:v2:'
 const TTL_LISTINGS = 120      // 2 min — produits en vente changent souvent
