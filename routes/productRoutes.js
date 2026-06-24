@@ -16,7 +16,7 @@ import {
 } from '../controllers/productController.js'
 import { protect, vendeurOnly, adminOnly } from '../middleware/authMiddleware.js'
 import { uploadProductImages, handleMulterError } from '../config/multer.js'
-import { cacheDel } from '../config/redisClient.js'
+import { cacheDel } from '../infrastructure/redisClient.js'
 
 const router = express.Router()
 
