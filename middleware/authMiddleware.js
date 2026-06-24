@@ -8,7 +8,7 @@
  */
 import jwt from 'jsonwebtoken'
 import User from '../models/User.js'
-import { cacheGet, cacheSet } from '../config/redisClient.js'
+import { cacheGet, cacheSet } from '../infrastructure/redisClient.js'
 
 const JWT_SECRET = process.env.JWT_SECRET
 if (!JWT_SECRET) {
