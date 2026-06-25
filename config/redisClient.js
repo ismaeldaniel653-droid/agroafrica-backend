@@ -1,19 +1,12 @@
 /**
- * Redis client — fallback mock pour développement local
- * En production, remplacer par un vrai client Redis
+ * Redis client — pont vers infrastructure/redisClient.js
+ * Tous les exports sont redirigés vers le module centralisé
  */
-let client = null;
-
-const getClient = () => client;
-
-const connectRedis = async () => {
-  console.log('⚠️ Redis non configuré — mode dégradé (cache désactivé)');
-  return null;
-};
-
-const disconnectRedis = async () => {
-  // rien à faire
-};
-
-export { getClient, connectRedis, disconnectRedis };
-export default { getClient, connectRedis, disconnectRedis };
+export {
+  getRedisClient,
+  cacheGet,
+  cacheSet,
+  cacheDel,
+  cacheDelByPattern,
+  closeRedis
+} from '../infrastructure/redisClient.js';
